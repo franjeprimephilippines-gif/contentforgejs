@@ -16,8 +16,8 @@ export async function POST(request) {
   let body;
   try {
     body = await request.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  } catch (e) {
+    return NextResponse.json({ error: `Invalid JSON body: ${e.message}` }, { status: 400 });
   }
 
   try {
@@ -33,6 +33,11 @@ export async function POST(request) {
       headers["anthropic-beta"] = "web-search-2025-03-05";
     }
 
+    // Strip max_uses from tools — not a valid Anthropic API field, causes 400
+    if (body.tools) {
+      body.tools = body.tools.map(({ max_uses, ...rest }) => rest);
+    }
+
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers,
@@ -40,8 +45,15 @@ export async function POST(request) {
     });
 
     const data = await response.json();
+
+    // Log Anthropic errors server-side for easier debugging
+    if (!response.ok) {
+      console.error("Anthropic API error:", response.status, JSON.stringify(data));
+    }
+
     return NextResponse.json(data, { status: response.status });
   } catch (err) {
+    console.error("Route handler error:", err.message);
     return NextResponse.json(
       { error: "Failed to reach Anthropic API", detail: err.message },
       { status: 502 }
